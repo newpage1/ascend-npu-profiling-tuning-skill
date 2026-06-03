@@ -1,0 +1,8 @@
+interface:
+  display_name: "Ascend NPU Profiling"
+  short_description: "Remote closed-loop Ascend NPU profiling and tuning"
+  brand_color: "#1677FF"
+  default_prompt: "Use $ascend-npu-profiling-tuning to profile my Ascend NPU workload on a remote host, collect artifacts, diagnose bottlenecks, and propose a measured tuning loop."
+
+policy:
+  allow_implicit_invocation: true
