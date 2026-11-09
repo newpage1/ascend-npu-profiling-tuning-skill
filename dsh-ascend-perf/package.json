@@ -1,0 +1,51 @@
+{
+  "name": "dsh-ascend-perf",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "description": "DeepSeek Harness 的昇腾 NPU 多环境占用看板：从 envs.json 读取多台昇腾主机，本机或 SSH 只读采集 npu-smi，展示空闲/部分/高负载、占用进程与逐卡逐 chip 详情，支持 5 分钟静默采集、手动刷新与配置弹窗。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/newpage1/ascend-npu-profiling-tuning-skill.git",
+    "directory": "dsh-ascend-perf"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "ascend",
+    "npu",
+    "npu-smi",
+    "observability"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "deploy.js",
+    "tune.js",
+    "tune-exec.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}

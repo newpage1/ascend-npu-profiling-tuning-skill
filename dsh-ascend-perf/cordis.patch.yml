@@ -1,0 +1,5 @@
+- insert:
+    - id: dsh-ascend-perf
+      name: dsh-ascend-perf
+      config:
+        demoMode: false
