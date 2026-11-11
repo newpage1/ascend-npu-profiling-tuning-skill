@@ -845,7 +845,7 @@ window.__ModuleLoader__.load({
       let hbmRate = null
       if (typeof chip.hbm_usage_rate_pct === 'number') hbmRate = chip.hbm_usage_rate_pct
       else if (typeof chip.hbm_used_mb === 'number' && typeof chip.hbm_total_mb === 'number' && chip.hbm_total_mb > 0) hbmRate = (chip.hbm_used_mb / chip.hbm_total_mb) * 100
-      if (hbmRate !== null && hbmRate >= 5) return 'occupied'
+      if (hbmRate !== null && hbmRate >= 10) return 'occupied' // 5% 左右是 910B 空闲基线（b02 实测 5.2%），阈值过低会把空闲误判为占用
       if (typeof chip.aicore_pct === 'number' && chip.aicore_pct >= 5) return 'occupied'
       if (chip.processes_state === 'unknown') return 'unknown'
       return 'idle'

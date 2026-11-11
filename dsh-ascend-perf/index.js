@@ -184,11 +184,15 @@ export function parseNpuSmiInfo(text) {
     }
 
     const head = cells[0].split(/\s+/).filter(Boolean)
-    if (head.length < 2) continue
-    if (/^(NPU|Chip)$/i.test(head[0]) && /^(Name|Phy-ID)$/i.test(head[1])) continue
-    const secondIsNumeric = /^\d+$/.test(head[1])
+    const busIdCell = String(cells[1] ?? '')
+    const isBusId = /^[0-9A-Fa-f]{4}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-7]$/.test(busIdCell)
+    // 910B3 单 chip 卡：芯片行只有一列 chip id，第二列直接是 Bus-Id（没有 Phy-ID 列）。
+    const singleChipRow = head.length === 1 && isBusId
+    if (head.length < 1 || (head.length < 2 && !singleChipRow)) continue
+    if (/^(NPU|Chip)$/i.test(head[0]) && /^(Name|Phy-ID)$/i.test(head[1] ?? '')) continue
+    const secondIsNumeric = head.length >= 2 && /^\d+$/.test(head[1])
 
-    if (!secondIsNumeric) {
+    if (!secondIsNumeric && !singleChipRow) {
       // 卡行：NPU ID + Name + Health + Power/Temp/Hugepages
       const cardId = num(head[0])
       if (cardId === null) continue
@@ -218,7 +222,7 @@ export function parseNpuSmiInfo(text) {
       // 同一卡的第二个 chip 由“卡行 + 芯片行”再次开始；复用当前卡。
     }
     const chipId = num(head[0])
-    const phyId = num(head[1])
+    const phyId = head.length >= 2 ? num(head[1]) : null
     const metrics = cells[2].split(/\s+/).filter(Boolean)
     const pairs = [...cells[2].matchAll(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/g)]
     const aicore = num(metrics[0])
@@ -1314,8 +1318,9 @@ async function collectLocal(ctx, cfg, { force } = {}) {
 // t44 C：SSH 采集合并为每环境 1 条连接——info + 逐卡 usages 在远端一次执行，@@CARD:<id>@@ 分段回传。
 export function buildSshRemoteCommand(npuSmiPath) {
   const npu = quotePosix(String(npuSmiPath || 'npu-smi'))
-  // 卡号仅取表格第二列的纯数字（awk /^\| [0-9]+ +Ascend/），不回显任何用户输入之外的字符。
-  return `info=$(${npu} info); printf '%s\\n' "$info"; cards=$(printf '%s\\n' "$info" | awk '/^\\| [0-9]+ +Ascend/ {print $2}' | sort -nu); for i in $cards; do printf '@@CARD:%s@@\\n' "$i"; ${npu} info -t usages -i "$i"; done`
+  // 卡号用 `npu-smi info -l` 的 NPU ID 提取，不依赖型号名带 Ascend 前缀。
+  // 旧实现按 `| <id> Ascend...` 匹配，B 系列（型号 910B3）会得到空列表，导致 usages 全缺、占用显示未知。
+  return `info=$(${npu} info); printf '%s\\n' "$info"; cards=$(${npu} info -l 2>/dev/null | sed -n 's/.*NPU ID *: *\\([0-9][0-9]*\\).*/\\1/p' | sort -nu); for i in $cards; do printf '@@CARD:%s@@\\n' "$i"; ${npu} info -t usages -i "$i"; done`
 }
 
 export function parseCombinedSshOutput(text) {
@@ -2723,7 +2728,7 @@ export function chipOccupancyState(chip) {
   let hbmRate = null
   if (typeof chip.hbm_usage_rate_pct === 'number') hbmRate = chip.hbm_usage_rate_pct
   else if (typeof chip.hbm_used_mb === 'number' && typeof chip.hbm_total_mb === 'number' && chip.hbm_total_mb > 0) hbmRate = (chip.hbm_used_mb / chip.hbm_total_mb) * 100
-  if (hbmRate !== null && hbmRate >= 5) return 'occupied'
+  if (hbmRate !== null && hbmRate >= 10) return 'occupied' // 5% 左右是 910B 空闲基线（b02 实测 5.2%），阈值过低会把空闲误判为占用
   if (typeof chip.aicore_pct === 'number' && chip.aicore_pct >= 5) return 'occupied'
   if (chip.processes_state === 'unknown') return 'unknown'
   return 'idle'

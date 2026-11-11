@@ -1,10 +1,14 @@
 {
   "name": "dsh-ascend-perf",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": false,
   "type": "module",
   "description": "DeepSeek Harness 的昇腾 NPU 多环境占用看板：从 envs.json 读取多台昇腾主机，本机或 SSH 只读采集 npu-smi，展示空闲/部分/高负载、占用进程与逐卡逐 chip 详情，支持 5 分钟静默采集、手动刷新与配置弹窗。",
   "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.2.1-rc.2 <0.3.0 || >=0.2.2-alpha.2 <0.3.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/newpage1/ascend-npu-profiling-tuning-skill.git",
