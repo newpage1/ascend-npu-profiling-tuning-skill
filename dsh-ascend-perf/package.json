@@ -1,9 +1,9 @@
 {
   "name": "dsh-ascend-perf",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": false,
   "type": "module",
-  "description": "DeepSeek Harness 的昇腾 NPU 多环境占用看板：从 envs.json 读取多台昇腾主机，本机或 SSH 只读采集 npu-smi，展示空闲/部分/高负载、占用进程与逐卡逐 chip 详情，支持 5 分钟静默采集、手动刷新与配置弹窗。",
+  "description": "DeepSeek Harness 的昇腾 NPU 环境监控与服务部署：从 envs.json 读取多台昇腾主机，只读采集 npu-smi 占用；在选定环境上预览/启动受控 vLLM 容器服务，默认只预览，真实启动需 allowRealExecution + 确认令牌。",
   "license": "MIT",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -20,7 +20,9 @@
     "ascend",
     "npu",
     "npu-smi",
-    "observability"
+    "observability",
+    "vllm",
+    "deployment"
   ],
   "exports": {
     ".": "./index.js",
@@ -32,6 +34,7 @@
     "index.js",
     "client.js",
     "deploy.js",
+    "deploy-exec.js",
     "tune.js",
     "tune-exec.js",
     "cordis.patch.yml",

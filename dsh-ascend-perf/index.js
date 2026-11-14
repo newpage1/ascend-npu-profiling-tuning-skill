@@ -16,6 +16,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { TUNE_SCHEMA, TuneService, createTuneRoutes, createTuneTools } from './tune.js'
 import { DeployPlanService, createDeployRoutes, createDeployTools } from './deploy.js'
+import { DeployRunService, createDeployRunRoutes, createDeployRunTools } from './deploy-exec.js'
 
 export const name = 'dsh-ascend-perf'
 export const inject = ['tools', 'subprocess', 'webServer']
@@ -1315,6 +1316,29 @@ async function collectLocal(ctx, cfg, { force } = {}) {
   return { result: partial ? degraded('snapshot', source, snapshot, warnings) : ok('snapshot', source, snapshot), snapshot }
 }
 
+// t126⑦/t128 回归修复：容器服务远端执行器（独立导出以便单测 argv 构造）——resolved ssh 路径 + 固定安全参数
+// + hostAlias + command，超时钳位 ≥5s（与采集 SSH 参数保持一致口径）。
+// t128：必须透传 cfg（runCommand 依赖 cfg.cwd 等；t126 只传 {timeout} 导致真实
+// spawn 报 COMMAND_FAILED "Cannot read properties of undefined (reading 'includes')"）。
+export function buildDeploySshExec(ctx, cfg = {}) {
+  return async (hostAlias, command, timeoutMs = 20000) => {
+    const resolved = await ctx.subprocess.resolveExecutable('ssh', {})
+    const args = [
+      '-T',
+      '-o', 'BatchMode=yes',
+      '-o', 'StrictHostKeyChecking=yes',
+      '-o', 'ConnectTimeout=8',
+      '-o', 'ServerAliveInterval=5',
+      '-o', 'ServerAliveCountMax=2',
+      '-o', 'ConnectionAttempts=1',
+      '-o', 'ClearAllForwardings=yes',
+      hostAlias,
+      command,
+    ]
+    return runCommand(ctx, { ...cfg, timeout: Math.max(Number(timeoutMs) || 20000, 5000) }, [resolved, ...args])
+  }
+}
+
 // t44 C：SSH 采集合并为每环境 1 条连接——info + 逐卡 usages 在远端一次执行，@@CARD:<id>@@ 分段回传。
 export function buildSshRemoteCommand(npuSmiPath) {
   const npu = quotePosix(String(npuSmiPath || 'npu-smi'))
@@ -1784,7 +1808,7 @@ export function apply(ctx, rawConfig = {}) {
   const envsSource = envsFile?.payload ?? (envsConfigError ? null : settingsRaw ?? {})
   applyEnvSettings(cfg, envsSource)
   // 写回只写 envs.json；envs.json 已存在或读取失败时不覆盖（读取失败不得清掉用户待修复的文件）
-  if (!envsFile?.payload && !envsConfigError) writeEnvsConfig(cfg.configDir, envsConfigPayload(cfg))
+  if (!envsFile?.payload && !envsConfigError) writeEnvsConfig(cfg.configDir, envsConfigPayload(cfg, null))
   const store = new Store(cfg.dataDir).load()
   const storeWarnings = store.warnings.slice()
   let inflight = null
@@ -1822,6 +1846,39 @@ export function apply(ctx, rawConfig = {}) {
   }
   const deployToolDefs = deploy ? createDeployTools({ service: deploy }) : []
   const deployRouteDefs = deploy ? createDeployRoutes({ service: deploy }) : []
+
+  // 服务部署 v3（t124）：容器服务预览/启动/状态/停止。
+  // 真实执行默认关闭；envs.json 可选 "deploy": {"allowRealExecution": true} 开启（apply/reload 时读取）。
+  let deployRunEnabled = isPlainObject(envsFile?.payload?.deploy) && envsFile.payload.deploy.allowRealExecution === true
+  // t128②：envs.json 顶层 deploy 段整体保存（privilegedHosts 等按环境 opt-in 配置），
+  // apply/每次写入后重读时同步——特权配方只对显式列入 privilegedHosts 的 hostAlias/env id 生效。
+  let deployRunConfig = isPlainObject(envsFile?.payload?.deploy) ? envsFile.payload.deploy : {}
+  const updateDeployRunEnabled = (payload) => {
+    deployRunEnabled = isPlainObject(payload?.deploy) && payload.deploy.allowRealExecution === true
+    deployRunConfig = isPlainObject(payload?.deploy) ? payload.deploy : {}
+  }
+  let deployRun = null
+  let deployRunInitError = null
+  try {
+    deployRun = new DeployRunService({
+      // 环境只读注入（同部署计划）；远端命令统一经 execSsh（ssh + runCommand，测试注入 mock）。
+      getEnv: (envId) => {
+        const env = (cfg.envs ?? []).find((item) => item.id === envId)
+        if (!env) return null
+        const record = (store.state.env_states ?? {})[envId] ?? null
+        return { env, record, occupancy: summarizeEnvOccupancy(record?.snapshot ?? null) }
+      },
+      isRealExecutionEnabled: () => deployRunEnabled,
+      // t126② 接管查询需要遍历启用环境
+      listEnvs: () => (cfg.envs ?? []).filter((item) => item && item.enabled !== false && item.mode === 'ssh'),
+      getDeployConfig: () => deployRunConfig,
+      execSsh: buildDeploySshExec(ctx, cfg),
+    })
+  } catch (error) {
+    deployRunInitError = { code: error?.code ?? 'STORE_IO', message: String(error?.message ?? error) }
+  }
+  const deployRunToolDefs = deployRun ? createDeployRunTools(deployRun) : []
+  const deployRunRouteDefs = deployRun ? createDeployRunRoutes(deployRun) : []
 
   const visibleRuns = () => (demoForced ? store.demoRuns : store.runs)
   const visibleSnapshots = () => (demoForced ? store.demoSnapshots : store.snapshots)
@@ -2021,6 +2078,8 @@ export function apply(ctx, rawConfig = {}) {
       const before = JSON.stringify([cfg.envs ?? [], cfg.pollIntervalMs ?? DEFAULT_POLL_MS])
       applyEnvSettings(cfg, file.payload)
       envsConfigError = null
+      // t124：deploy.allowRealExecution 跟随 envs.json 重新加载（真实执行开关不重启插件即可切换）
+      updateDeployRunEnabled(file.payload)
       const after = JSON.stringify([cfg.envs ?? [], cfg.pollIntervalMs ?? DEFAULT_POLL_MS])
       if (before !== after) restartEnvPolling()
     } else if (file?.error) {
@@ -2034,7 +2093,11 @@ export function apply(ctx, rawConfig = {}) {
     const ms = Number(pollIntervalMs)
     if (Number.isFinite(ms)) cfg.pollIntervalMs = Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, Math.round(ms)))
     mirrorPrimaryEnv(cfg)
-    writeEnvsConfig(cfg.configDir, envsConfigPayload(cfg))
+    // t126③：保留文件中的未知顶层键（deploy 等），写后重读同步真实执行门
+    const existing = readEnvsConfig(cfg.configDir)
+    writeEnvsConfig(cfg.configDir, envsConfigPayload(cfg, existing?.payload ?? null))
+    const fresh = readEnvsConfig(cfg.configDir)
+    if (fresh?.payload) updateDeployRunEnabled(fresh.payload)
     envsConfigError = null
     restartEnvPolling()
     // 首轮采集放后台跑（最多 16 个环境 × 15s 超时不能阻塞 HTTP 响应），
@@ -2072,6 +2135,11 @@ export function apply(ctx, rawConfig = {}) {
       snapshot,
       envs: demoForced ? [] : envsPayload(),
       envs_config_error: envsConfigError,
+      // t124：容器服务真实执行开关（envs.json deploy.allowRealExecution）+ 初始化状态
+      deploy_run: {
+        real_execution_enabled: deployRunEnabled,
+        init_error: deployRunInitError,
+      },
       source: snapshot?.source ?? { ...baseSource('local', false), source_ref: 'none' },
       warnings: sourceWarnings(),
     }
@@ -2253,7 +2321,7 @@ export function apply(ctx, rawConfig = {}) {
   ]
 
   ctx.effect(() => {
-    const disposers = toolDefs.concat(tuneToolDefs, deployToolDefs).map((def) => ctx.tools.register(def))
+    const disposers = toolDefs.concat(tuneToolDefs, deployToolDefs, deployRunToolDefs).map((def) => ctx.tools.register(def))
     return () => disposers.forEach((dispose) => dispose())
   }, 'ascend-perf: agent tools')
 
@@ -2277,6 +2345,9 @@ export function apply(ctx, rawConfig = {}) {
       handler: (body) => {
         const config = updateSettings(cfg, cfg.dataDir, cfg.configDir, body)
         if (body?.envs !== undefined || body?.pollIntervalMs !== undefined) restartEnvPolling()
+        // t126③：envs 写入后重读文件同步真实执行门（保留的 deploy 键即刻生效，不靠内存记忆）
+        const fresh = readEnvsConfig(cfg.configDir)
+        if (fresh?.payload) updateDeployRunEnabled(fresh.payload)
         return { schema: SCHEMA, config }
       },
     },
@@ -2463,6 +2534,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     ...tuneRouteDefs,
     ...deployRouteDefs,
+    ...deployRunRouteDefs,
   ]
 
   async function demoSeed() {
@@ -2712,8 +2784,17 @@ function writeEnvsConfig(configDir, payload) {
   try { chmodSync(configDir, 0o700) } catch { /* best effort */ }
 }
 
-function envsConfigPayload(cfg) {
-  return { version: 1, pollIntervalMs: cfg.pollIntervalMs ?? DEFAULT_POLL_MS, envs: cfg.envs ?? [] }
+// t126③：写回时保留未知顶层键（至少 deploy.allowRealExecution）——否则任何 envs 保存都会
+// 静默丢掉真实执行开关。known 键（version/pollIntervalMs/envs）始终以当前内存为准覆盖。
+function envsConfigPayload(cfg, preservePayload = null) {
+  const payload = { version: 1, pollIntervalMs: cfg.pollIntervalMs ?? DEFAULT_POLL_MS, envs: cfg.envs ?? [] }
+  if (isPlainObject(preservePayload)) {
+    for (const key of Object.keys(preservePayload)) {
+      if (key === 'version' || key === 'pollIntervalMs' || key === 'envs') continue
+      payload[key] = preservePayload[key]
+    }
+  }
+  return payload
 }
 
 /* ------------------------------ 占用判定（§14.3，与 client.js 同规则） ------------------------------ */
@@ -3082,7 +3163,9 @@ function updateSettings(cfg, dataDir, configDir, body) {
     }
     applyEnvSettings(cfg, next)
     mirrorPrimaryEnv(cfg)
-    writeEnvsConfig(configDir, envsConfigPayload(cfg))
+    // t126③：保留未知顶层键（deploy 等），避免保存环境时静默丢掉真实执行开关
+    const existing = readEnvsConfig(configDir)
+    writeEnvsConfig(configDir, envsConfigPayload(cfg, existing?.payload ?? null))
     return publicConfig(cfg)
   }
   const next = publicConfig(cfg)

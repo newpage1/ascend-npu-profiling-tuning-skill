@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     const API = '/api/ascend-perf'
     // 发布构建会把这里替换为 'env'：插件市场 v1 只注册「环境信息」视图；
     // 本地完整版保持 'full'，服务部署/性能调优继续打磨。
-    const EDITION = 'env'
+    const EDITION = 'deploy'
 
     const DEFAULT_TUNE_SPEC = {
       schema: 'dsh-ascend-perf/tune-spec-v1',
@@ -39,8 +39,8 @@ window.__ModuleLoader__.load({
 
     const zh = {
       'meta.title': '昇腾性能调优',
-      'panel.title': '昇腾环境监控',
-      'panel.guideDescription': '多环境 NPU 占用视图：从 envs.json 读取环境，只读采集 npu-smi，展示空闲/部分/高负载、占用进程与逐卡逐 chip 详情。',
+      'panel.title': '昇腾环境监控与服务部署',
+      'panel.guideDescription': '两段视图：环境信息（多环境 NPU 占用）与服务部署（在选定环境预览/启动受控 vLLM 容器，默认只预览）。',
       'action.refresh': '刷新状态',
       'action.import': '导入运行',
       'action.loadDemo': '加载演示数据',
@@ -283,7 +283,7 @@ window.__ModuleLoader__.load({
       'deploy.seg.tuneShort': '调优',
       'deploy.seg.deployShort': '部署',
       'deploy.title': '服务部署（部署计划）',
-      'deploy.readonly': '计划仅是文本：不执行任何步骤（不 git / 不 pip / 不启停服务 / 不跑 benchmark / 不连 NPU）',
+      'deploy.readonly': '环境信息只读；容器服务默认只预览，真实启动需 envs.json 门控 + 确认令牌，且只操作本插件创建的容器。',
       'deploy.envsHint': '目标环境来自 envs.json（在「环境信息」段维护）',
       'deploy.envNone': '没有启用中的环境：先在「环境信息」段添加或启用环境',
       'deploy.envBusy': '环境当前{tier}：仍可生成计划，执行前需确认占用方',
@@ -345,13 +345,68 @@ window.__ModuleLoader__.load({
       'deploy.state.loading': '正在读取计划…',
       'deploy.state.refresh': '刷新',
       'deploy.state.loadFailed': '计划列表加载失败',
-      'deploy.footer': '计划仅是文本，不执行 · 保存于 configDir/plans.json（0600） · 真实执行待后续授权',
+      'deploy.footer': '容器服务默认只预览；真实启动受 envs.json 门控 · 环境信息只读',
+      'deploy.run.title': "容器服务（受控执行）",
+      'deploy.run.desc': "在选定环境上以容器方式预览/启动 vLLM 服务：只挂选中的 NPU 卡与只读目录，端口只绑 127.0.0.1，绝不设置 ASCEND_RT_VISIBLE_DEVICES。",
+      'deploy.run.disabledHint': "真实执行未启用：在 envs.json 增加 \"deploy\": {\"allowRealExecution\": true} 并点「重新加载配置」后才能启动（预览不受限，fail-closed）。",
+      'deploy.run.enabledHint': "真实执行已启用：启动需要预览返回的确认令牌（10 分钟内有效）。",
+      'deploy.run.env': "环境",
+      'deploy.legacy.title': "高级：按代码分支生成部署计划（旧版）",
+      'deploy.run.port': "端口",
+      'deploy.run.maxModelLen': 'max-model-len',
+      'deploy.run.advanced': '高级选项',
+      'deploy.run.vllmParams': 'vLLM 启动参数',
+      'deploy.run.maxNumSeqs': 'max-num-seqs',
+      'deploy.run.maxNumBatched': 'max-num-batched-tokens',
+      'deploy.run.gpuMemory': 'gpu-memory-utilization',
+      'deploy.run.prefixCache': '启用 prefix caching',
+      'deploy.run.enforceEager': 'enforce-eager',
+      'deploy.run.codeBranches': '代码分支',
+      'deploy.run.codeBranchesHint': '填分支/tag 后，勾选下方“按分支构建后启动”会真正 clone/checkout + pip install。',
+      'deploy.run.build': '按分支构建后启动（容器内 clone + pip install）',
+      'deploy.run.buildHint': '构建在容器启动前执行，首次可能 10–60 分钟；repo 必须容器内可达。构建失败服务不会就绪。',
+      'deploy.run.branchLabel': '分支/tag',
+      'deploy.run.repoLabel': '仓库地址',
+      'deploy.run.repoPlaceholder': 'https://… 或 git@…（构建时必填）',
+      'deploy.run.needModel': '请先填写模型相对路径（模型根目录下的子路径）',
+      'deploy.run.needChip': '请先勾选至少一个空闲 chip',
+      'deploy.run.needPreview': '请先点“预览启动命令”，拿到 10 分钟确认令牌',
+      'deploy.run.realDisabledHint': '真实执行未启用：在 envs.json 增加 deploy.allowRealExecution=true 并重新加载配置；当前只能预览',
+      'deploy.run.branchPlaceholder': '分支/tag（可选）',
+      'deploy.run.healthTimeout': '健康检查超时（秒）',
+      'deploy.run.tp': 'TP',
+      'deploy.run.tokenHint': '真实启动需 10 分钟确认令牌',
+      'deploy.run.image': "镜像",
+      'deploy.run.modelRoot': "模型根目录（挂到 /models）",
+      'deploy.run.codeRoot': "代码目录（挂到 /code，只读）",
+      'deploy.run.modelPath': "模型相对路径",
+      'deploy.run.cards': "选择 NPU chip（仅空闲可选）",
+      'deploy.run.chip': "chip",
+      'deploy.run.selectAll': "全选",
+      'deploy.run.selectFirst8': "前 8 张",
+      'deploy.run.selectLast8': "后 8 张",
+      'deploy.run.tpAuto': "TP = 选中 {n} 卡",
+      'deploy.run.card': "卡",
+      'deploy.run.cardUnknown': "指标未知",
+      'deploy.run.noSnapshot': "该环境暂无占用快照（先在环境信息段刷新）",
+      'deploy.run.noEnvs': "没有 ssh 模式的启用环境：容器服务需要 SSH 环境。",
+      'deploy.run.preview': "预览启动命令",
+      'deploy.run.start': "启动",
+      'deploy.run.previewTitle': "启动预览（只读，未执行）",
+      'deploy.run.token': "确认令牌",
+      'deploy.run.expiry': "有效期至 {time}",
+      'deploy.run.instances': "本插件启动的容器",
+      'deploy.run.noInstances': "当前会话尚未启动任何容器。",
+      'deploy.run.state': "状态",
+      'deploy.run.logs': "日志",
+      'deploy.run.stop': "停止",
+      'deploy.run.logEmpty': "（容器无日志输出）",
     }
 
     const en = {
       'meta.title': 'Ascend Performance Tuning',
-      'panel.title': 'Ascend NPU Monitor',
-      'panel.guideDescription': 'Fleet occupancy for Ascend NPUs: environments come from envs.json, npu-smi is read-only, with idle/partial/busy state, processes, and per-card/per-chip detail.',
+      'panel.title': 'Ascend NPU Monitor & Deploy',
+      'panel.guideDescription': 'Two views: Environments (fleet NPU occupancy) and Deployment (preview/start a controlled vLLM container; preview-only by default).',
       'action.refresh': 'Refresh status',
       'action.import': 'Import run',
       'action.loadDemo': 'Load demo data',
@@ -656,7 +711,62 @@ window.__ModuleLoader__.load({
       'deploy.state.loading': 'Loading plans…',
       'deploy.state.refresh': 'Refresh',
       'deploy.state.loadFailed': 'Failed to load plans',
-      'deploy.footer': 'Plans are text, never executed · stored at configDir/plans.json (0600) · real execution awaits future authorization',
+      'deploy.footer': 'Container services preview by default; real start is gated by envs.json · environment view is read-only',
+      'deploy.run.title': "Container services (controlled execution)",
+      'deploy.run.desc': "Preview/start vLLM in a container on the selected environment: only the chosen NPU cards and read-only mounts are attached, the port binds 127.0.0.1 only, and ASCEND_RT_VISIBLE_DEVICES is never set.",
+      'deploy.run.disabledHint': "Real execution disabled: add \"deploy\": {\"allowRealExecution\": true} to envs.json and click \"Reload config\" to enable starting (preview always works; fail-closed).",
+      'deploy.run.enabledHint': "Real execution enabled: starting requires the confirmation token from a preview (valid for 10 minutes).",
+      'deploy.run.env': "Environment",
+      'deploy.legacy.title': "Advanced: branch-based plan (legacy)",
+      'deploy.run.port': "Port",
+      'deploy.run.maxModelLen': "max-model-len",
+      'deploy.run.advanced': 'Advanced',
+      'deploy.run.vllmParams': 'vLLM startup args',
+      'deploy.run.maxNumSeqs': 'max-num-seqs',
+      'deploy.run.maxNumBatched': 'max-num-batched-tokens',
+      'deploy.run.gpuMemory': 'gpu-memory-utilization',
+      'deploy.run.prefixCache': 'Enable prefix caching',
+      'deploy.run.enforceEager': 'enforce-eager',
+      'deploy.run.codeBranches': 'Code branches',
+      'deploy.run.codeBranchesHint': 'With a branch/tag and build enabled, the container clones/checks-out and pip-installs before serve.',
+      'deploy.run.build': 'Build branches before start (clone + pip install in container)',
+      'deploy.run.buildHint': 'Build runs before serve; first build may take 10–60 min. Repo must be reachable inside the container. Failed build = no service.',
+      'deploy.run.branchLabel': 'branch/tag',
+      'deploy.run.repoLabel': 'repo URL',
+      'deploy.run.repoPlaceholder': 'https://… or git@… (required for build)',
+      'deploy.run.needModel': 'Enter the model relative path (under the model root)',
+      'deploy.run.needChip': 'Select at least one idle chip',
+      'deploy.run.needPreview': 'Click “Preview start command” first to get a 10-minute token',
+      'deploy.run.realDisabledHint': 'Real execution is disabled: set deploy.allowRealExecution=true in envs.json and reload; preview only',
+      'deploy.run.branchPlaceholder': 'branch/tag (optional)',
+      'deploy.run.healthTimeout': 'Health timeout (s)',
+      'deploy.run.tp': 'TP',
+      'deploy.run.tokenHint': 'Real start requires a 10-minute confirmation token',
+      'deploy.run.image': "Image",
+      'deploy.run.modelRoot': "Model root (mounted at /models)",
+      'deploy.run.codeRoot': "Code dir (mounted at /code, read-only)",
+      'deploy.run.modelPath': "Model relative path",
+      'deploy.run.cards': "Pick NPU chips (idle only)",
+      'deploy.run.chip': "chip",
+      'deploy.run.selectAll': "All",
+      'deploy.run.selectFirst8': "First 8",
+      'deploy.run.selectLast8': "Last 8",
+      'deploy.run.tpAuto': "TP = {n} selected card(s)",
+      'deploy.run.card': "Card",
+      'deploy.run.cardUnknown': "usage unknown",
+      'deploy.run.noSnapshot': "No occupancy snapshot for this environment yet (refresh in the Environments segment first)",
+      'deploy.run.noEnvs': "No enabled ssh environment: container services need an SSH environment.",
+      'deploy.run.preview': "Preview start command",
+      'deploy.run.start': "Start",
+      'deploy.run.previewTitle': "Start preview (read-only, not executed)",
+      'deploy.run.token': "Confirmation token",
+      'deploy.run.expiry': "valid until {time}",
+      'deploy.run.instances': "Containers started by this plugin",
+      'deploy.run.noInstances': "No containers started in this session yet.",
+      'deploy.run.state': "Status",
+      'deploy.run.logs': "Logs",
+      'deploy.run.stop': "Stop",
+      'deploy.run.logEmpty': "(no log output)",
     }
 
     /* ------------------------------ styles ------------------------------ */
@@ -702,7 +812,7 @@ window.__ModuleLoader__.load({
       table: { display: 'flex', flexDirection: 'column', gap: '2px' },
       tr: { display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.8fr 0.8fr', gap: '6px', alignItems: 'center', padding: '3px 0', borderBottom: `1px solid ${c.borderSoft}`, fontSize: '12px' },
       th: { color: c.textTertiary, fontSize: '11px' },
-      select: { border: `1px solid ${c.border}`, borderRadius: '6px', padding: '4px 6px', background: c.layer1, color: c.text, fontSize: '12px', maxWidth: '100%' },
+      select: { border: '1px solid rgba(107,122,140,.45)', borderRadius: '6px', padding: '4px 6px', background: c.layer1, color: c.text, fontSize: '12px', width: '100%', maxWidth: '100%', boxSizing: 'border-box' },
       inputText: { border: `1px solid ${c.border}`, borderRadius: '6px', padding: '5px 7px', background: c.layer1, color: c.text, fontSize: '12px', minWidth: 0, width: '100%', boxSizing: 'border-box' },
       textarea: { border: `1px solid ${c.border}`, borderRadius: '6px', padding: '6px 7px', background: c.layer1, color: c.text, fontSize: '12px', minHeight: '84px', resize: 'vertical', width: '100%', boxSizing: 'border-box', fontFamily: 'var(--dsw-alias-mono-font-family, ui-monospace, SFMono-Regular, Menlo, monospace)' },
       fileInput: { fontSize: '12px', color: c.textSecondary, maxWidth: '100%' },
@@ -2147,11 +2257,16 @@ window.__ModuleLoader__.load({
 
       const segOptions = EDITION === 'env'
         ? [{ id: 'envs', label: t('deploy.seg.envs'), shortLabel: t('deploy.seg.envsShort') }]
-        : [
-            { id: 'envs', label: t('deploy.seg.envs'), shortLabel: t('deploy.seg.envsShort') },
-            { id: 'deploy', label: t('deploy.seg.deploy'), shortLabel: t('deploy.seg.deployShort') },
-            { id: 'tune', label: t('deploy.seg.tune'), shortLabel: t('deploy.seg.tuneShort') },
-          ]
+        : EDITION === 'deploy'
+          ? [
+              { id: 'envs', label: t('deploy.seg.envs'), shortLabel: t('deploy.seg.envsShort') },
+              { id: 'deploy', label: t('deploy.seg.deploy'), shortLabel: t('deploy.seg.deployShort') },
+            ]
+          : [
+              { id: 'envs', label: t('deploy.seg.envs'), shortLabel: t('deploy.seg.envsShort') },
+              { id: 'deploy', label: t('deploy.seg.deploy'), shortLabel: t('deploy.seg.deployShort') },
+              { id: 'tune', label: t('deploy.seg.tune'), shortLabel: t('deploy.seg.tuneShort') },
+            ]
       const bottomRow = h(
         'div',
         { style: s.row },
@@ -2425,6 +2540,336 @@ window.__ModuleLoader__.load({
 
     // ---------------- 服务部署分段（v2） ----------------
 
+
+    // t124：容器服务块——预览/启动/状态/停止（真实执行双门：envs.json deploy.allowRealExecution + confirmation_token）
+    const DEPLOY_RUN_DEFAULT_IMAGE = 'quay.io/ascend/vllm-ascend:v0.23.0'
+    const DEPLOY_RUN_BIG_IMAGE = 'quay.io/ascend/vllm-ascend:v0.30.0rc2-a3'
+    const DEPLOY_RUN_DEFAULT_MODEL_ROOT = '/data1/models'
+    const DEPLOY_RUN_DEFAULT_MAX_LEN = '131072'
+    const DEPLOY_RUN_IMAGES = [
+      'quay.io/ascend/vllm-ascend:v0.23.0',
+      'quay.io/ascend/vllm-ascend:v0.30.0rc2-a3',
+    ]
+
+    function runCardStates(env) {
+      // t130：按逻辑 chip/device 选择（c01 A3 8 卡×2 chip=16；b01 8 卡×1 chip=8）。
+      // device_id 同时作为容器 --device=/dev/davinciN 与 TP 计数；卡级空闲仍按整卡判定（容器挂的是整卡设备）。
+      const cards = env?.snapshot?.npu?.cards ?? []
+      const devices = []
+      let deviceId = 0
+      for (const card of cards) {
+        const chips = card?.chips ?? []
+        if (chips.length === 0) {
+          devices.push({ device_id: deviceId++, card_id: card?.card_id, chip_id: null, chip_count: 0, hbmMax: null, aiMax: null, idle: false, unknown: true })
+          continue
+        }
+        for (const chip of chips) {
+          let hbm = typeof chip?.hbm_usage_rate_pct === 'number'
+            ? chip.hbm_usage_rate_pct
+            : (typeof chip?.hbm_used_mb === 'number' && typeof chip?.hbm_total_mb === 'number' && chip.hbm_total_mb > 0
+              ? (chip.hbm_used_mb / chip.hbm_total_mb) * 100 : null)
+          const ai = typeof chip?.aicore_pct === 'number' ? chip.aicore_pct : null
+          const unknown = hbm === null || ai === null
+          const idle = !unknown && hbm < 10 && ai < 5
+          devices.push({ device_id: deviceId++, card_id: card?.card_id, chip_id: chip?.chip_id ?? null, chip_count: chips.length, hbmMax: hbm, aiMax: ai, idle, unknown })
+        }
+      }
+      return devices
+    }
+
+    function envRunDefaults(env) {
+      // t132：按环境给默认值，避免 c01 选中后仍沿用 b01 的 v0.23.0 / 错误的模型根目录。
+      const chips = runCardStates(env)
+      return {
+        image: chips.length >= 16 ? DEPLOY_RUN_BIG_IMAGE : DEPLOY_RUN_DEFAULT_IMAGE,
+        modelRoot: DEPLOY_RUN_DEFAULT_MODEL_ROOT,
+        codeRoot: '/home/z00919396',
+        maxLen: DEPLOY_RUN_DEFAULT_MAX_LEN,
+      }
+    }
+
+    function ContainerServicesBlock({ state, t }) {
+      const envs = (state?.envs ?? []).filter((env) => env && env.enabled !== false && env.mode === 'ssh')
+      const initialDefaults = envRunDefaults(envs[0])
+      const [runEnvId, setRunEnvId] = useState(envs[0]?.id ?? '')
+      const [runCards, setRunCards] = useState([])
+      const [runImage, setRunImage] = useState(initialDefaults.image)
+      const [modelRoot, setModelRoot] = useState(initialDefaults.modelRoot)
+      const [modelPath, setModelPath] = useState('')
+      const [codeRoot, setCodeRoot] = useState(initialDefaults.codeRoot)
+      const [runPort, setRunPort] = useState('18433')
+      const [runMml, setRunMml] = useState(initialDefaults.maxLen)
+      const [runHealth, setRunHealth] = useState('300')
+      const [runMaxSeqs, setRunMaxSeqs] = useState('256')
+      const [runMaxBatched, setRunMaxBatched] = useState('8192')
+      const [runGpuMem, setRunGpuMem] = useState('0.9')
+      const [runPrefix, setRunPrefix] = useState(true)
+      const [runEager, setRunEager] = useState(false)
+      const [runBranches, setRunBranches] = useState({ vllm: '', 'vllm-ascend': '', lmcache: '', 'lmcache-ascend': '', mooncake: '' })
+      const [runRepos, setRunRepos] = useState({ vllm: '', 'vllm-ascend': '', lmcache: '', 'lmcache-ascend': '', mooncake: '' })
+      const [runBuild, setRunBuild] = useState(false)
+      const [lastBulk, setLastBulk] = useState(null)
+      const [previewData, setPreviewData] = useState(null)
+      const [previewWarnings, setPreviewWarnings] = useState([])
+      const [runBusy, setRunBusy] = useState(false)
+      const [runError, setRunError] = useState(null)
+      const [instances, setInstances] = useState(null)
+      const [instancesError, setInstancesError] = useState(null)
+      const [logView, setLogView] = useState(null)
+
+      const realEnabled = state?.deploy_run?.real_execution_enabled === true
+      const runEnv = envs.find((env) => env.id === runEnvId) ?? envs[0] ?? null
+      const cardStates = runEnv ? runCardStates(runEnv) : []
+
+      const runBody = () => ({
+        env_id: runEnv?.id,
+        image: runImage,
+        model: { root: modelRoot, path: modelPath },
+        code: (codeRoot.trim() || runBuild || Object.values(runBranches).some((v) => String(v).trim())) ? {
+          ...(codeRoot.trim() ? { root: codeRoot.trim() } : {}),
+          build: runBuild,
+          components: Object.entries(runBranches).filter(([, ref]) => String(ref).trim()).map(([component, ref]) => ({ component, ref: String(ref).trim(), ...(String(runRepos[component] ?? '').trim() ? { repo: String(runRepos[component]).trim() } : {}) })),
+        } : null,
+        params: { port: Number(runPort), tensor_parallel: runCards.length, max_model_len: Number(runMml), health_timeout_s: Number(runHealth), max_num_seqs: Number(runMaxSeqs), max_num_batched_tokens: Number(runMaxBatched), gpu_memory_utilization: Number(runGpuMem), enable_prefix_caching: runPrefix, enforce_eager: runEager },
+        cards: runCards.slice().sort((a, b) => a - b),
+      })
+
+      const previewBlocked = !modelPath
+        ? t('deploy.run.needModel')
+        : runCards.length === 0
+          ? t('deploy.run.needChip')
+          : null
+      const startBlocked = !realEnabled
+        ? t('deploy.run.realDisabledHint')
+        : !previewData?.confirmation_token
+          ? t('deploy.run.needPreview')
+          : null
+
+      useEffect(() => {
+        if (!previewData) return
+        const node = document.querySelector('[data-testid="deploy.run.previewCard"]')
+        if (node && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' })
+      }, [previewData])
+
+      const doPreview = async () => {
+        setRunBusy(true); setRunError(null); setPreviewData(null); setPreviewWarnings([])
+        try {
+          const res = await apiPost('/deploy/run/preview', runBody())
+          if (res?.error) throw res.error
+          setPreviewData(res?.data ?? null)
+          setPreviewWarnings(res?.warnings ?? [])
+        } catch (error) {
+          setRunError({ code: error?.code ?? 'NETWORK', message: String(error?.message ?? error) })
+        } finally { setRunBusy(false) }
+      }
+
+      const doStart = async () => {
+        if (!previewData?.confirmation_token) return
+        setRunBusy(true); setRunError(null)
+        try {
+          const res = await apiPost('/deploy/run/start', { ...runBody(), confirmation_token: previewData.confirmation_token })
+          if (res?.error) throw res.error
+          setPreviewData(null); setPreviewWarnings([])
+          await loadInstances()
+        } catch (error) {
+          setRunError({ code: error?.code ?? 'NETWORK', message: String(error?.message ?? error) })
+        } finally { setRunBusy(false) }
+      }
+
+      const loadInstances = async () => {
+        try {
+          const res = await apiGet('/deploy/run/instances')
+          if (res?.error) throw res.error
+          setInstances(res?.data?.instances ?? [])
+          setInstancesError(null)
+        } catch (error) {
+          setInstancesError({ code: error?.code ?? 'NETWORK', message: String(error?.message ?? error) })
+        }
+      }
+
+      const doState = async (instance) => {
+        setRunBusy(true); setRunError(null)
+        try {
+          const res = await apiGet(`/deploy/run/instances/${encodeURIComponent(instance.service_id)}`)
+          if (res?.error) throw res.error
+          // t126：状态结果就地合并展示（health 含 running=接管运行中），不再立刻刷新覆盖
+          if (res?.data) {
+            const next = res.data
+            setInstances((prev) => (prev ?? []).map((it) => (it.service_id === instance.service_id || it.container_name === instance.container_name
+              ? { ...it, health: next.health, adopted: Boolean(next.adopted) } : it)))
+          }
+        } catch (error) {
+          setRunError({ code: error?.code ?? 'NETWORK', message: String(error?.message ?? error) })
+        } finally { setRunBusy(false) }
+      }
+
+      const doLogs = async (instance) => {
+        setRunBusy(true); setRunError(null)
+        try {
+          const res = await apiGet(`/deploy/run/instances/${encodeURIComponent(instance.service_id)}/logs?tail=100`)
+          if (res?.error) throw res.error
+          setLogView({ container: instance.container_name, log: res?.data?.log ?? '' })
+        } catch (error) {
+          setRunError({ code: error?.code ?? 'NETWORK', message: String(error?.message ?? error) })
+        } finally { setRunBusy(false) }
+      }
+
+      const doStop = async (instance) => {
+        setRunBusy(true); setRunError(null)
+        try {
+          const res = await apiPost(`/deploy/run/instances/${encodeURIComponent(instance.service_id)}/stop`, {})
+          if (res?.error) throw res.error
+          await loadInstances()
+        } catch (error) {
+          setRunError({ code: error?.code ?? 'NETWORK', message: String(error?.message ?? error) })
+        } finally { setRunBusy(false) }
+      }
+
+      const applyBulk = (kind) => {
+        const idle = cardStates.filter((d) => d.idle).map((d) => d.device_id)
+        let next = []
+        let mode = kind
+        if (kind === 'all') {
+          if (lastBulk === 'all') { next = []; mode = 'all:inverse' }
+          else { next = idle; mode = 'all' }
+        } else {
+          const group = kind === 'first8' ? idle.slice(0, 8) : idle.slice(-8)
+          if (lastBulk === kind) { next = idle.filter((id) => !group.includes(id)); mode = `${kind}:inverse` }
+          else { next = group; mode = kind }
+        }
+        setRunCards(next)
+        setLastBulk(mode)
+      }
+
+      const runField = (label, value, onInput, testid, extra) =>
+        h('label', { style: { ...s.field, fontSize: '12px' } },
+          h('span', { style: { color: c.textSecondary } }, label),
+          h('input', { value, onInput, 'data-testid': testid, style: { ...s.inputText, ...(extra?.style ?? {}) }, ...(extra?.props ?? {}) }))
+
+      const runSelect = (label, value, onChange, testid, options) =>
+        h('label', { style: { ...s.field, fontSize: '12px' } },
+          h('span', { style: { color: c.textSecondary } }, label),
+          h('select', { value, onChange, 'data-testid': testid, style: { ...s.select, fontSize: '12px' } },
+            (options ?? []).map((opt) => h('option', { key: opt.value, value: opt.value }, opt.label))))
+
+      return h(Section, { title: t('deploy.run.title') },
+        h('div', { style: { ...s.muted, fontSize: '11px', marginBottom: '8px' } }, t('deploy.run.desc')),
+        h('div', { 'data-testid': realEnabled ? 'deploy.run.enabledHint' : 'deploy.run.disabledHint',
+          style: { fontSize: '11px', marginBottom: '8px', padding: '6px 8px', borderRadius: '8px', background: realEnabled ? 'rgba(5,150,105,.08)' : 'rgba(217,119,6,.08)', color: realEnabled ? '#059669' : '#9a6700' } },
+          realEnabled ? t('deploy.run.enabledHint') : t('deploy.run.disabledHint')),
+        runError ? h(StateMsg, { title: runError.code, desc: runError.message, tone: 'error' }) : null,
+        envs.length === 0 ? h('div', { style: s.muted }, t('deploy.run.noEnvs')) : h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: '6px', marginBottom: '8px' } },
+          runSelect(t('deploy.run.env'), runEnv?.id ?? '', (event) => { const nextId = event?.target?.value ?? ''; const nextEnv = envs.find((env) => env.id === nextId) ?? null; const defaults = envRunDefaults(nextEnv); setRunEnvId(nextId); setRunCards([]); setPreviewData(null); setPreviewWarnings([]); setRunError(null); setRunImage(defaults.image); setModelRoot(defaults.modelRoot); setCodeRoot(defaults.codeRoot); setRunMml(defaults.maxLen) }, 'deploy.run.env',
+            envs.map((env, index) => ({ value: env.id, label: envDisplayName(env, t('envs.fallbackName', { n: index + 1 })) }))),
+          runField(t('deploy.run.port'), runPort, (event) => setRunPort(event?.target?.value ?? ''), 'deploy.run.port', { props: { inputMode: 'numeric' } }),
+          runField(t('deploy.run.maxModelLen'), runMml, (event) => setRunMml(event?.target?.value ?? ''), 'deploy.run.maxModelLen', { props: { inputMode: 'numeric' } }),
+        ),
+        envs.length > 0 ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: '6px', marginBottom: '8px' } },
+          h('div', { style: { gridColumn: '1 / -1' } },
+            runSelect(t('deploy.run.image'), runImage, (event) => setRunImage(event?.target?.value ?? ''), 'deploy.run.image',
+              DEPLOY_RUN_IMAGES.map((img) => ({ value: img, label: img })))),
+          runField(t('deploy.run.modelRoot'), modelRoot, (event) => setModelRoot(event?.target?.value ?? ''), 'deploy.run.modelRoot'),
+          runField(t('deploy.run.modelPath'), modelPath, (event) => setModelPath(event?.target?.value ?? ''), 'deploy.run.modelPath', { props: { placeholder: 'DeepSeek-V4.1-Flash-1017-w8a8' } }),
+          runField(t('deploy.run.codeRoot'), codeRoot, (event) => setCodeRoot(event?.target?.value ?? ''), 'deploy.run.codeRoot'),
+        ) : null,
+        envs.length > 0 ? h('div', { style: { marginBottom: '8px' } },
+          h('div', { style: { ...s.muted, fontSize: '11px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+            h('span', null, `${t('deploy.run.cards')} · ${t('deploy.run.tpAuto', { n: runCards.length })}`),
+            h('button', { type: 'button', 'data-testid': 'deploy.run.selectAll', onClick: () => applyBulk('all'), style: { ...s.buttonGhost, fontSize: '10.5px', padding: '2px 8px' } }, t('deploy.run.selectAll')),
+            h('button', { type: 'button', 'data-testid': 'deploy.run.selectFirst8', onClick: () => applyBulk('first8'), style: { ...s.buttonGhost, fontSize: '10.5px', padding: '2px 8px' } }, t('deploy.run.selectFirst8')),
+            h('button', { type: 'button', 'data-testid': 'deploy.run.selectLast8', onClick: () => applyBulk('last8'), style: { ...s.buttonGhost, fontSize: '10.5px', padding: '2px 8px' } }, t('deploy.run.selectLast8')),
+          ),
+          cardStates.length === 0 ? h('span', { style: s.muted, fontSize: '11px' }, t('deploy.run.noSnapshot')) : h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px' } },
+            cardStates.map((card) =>
+              h('label', { key: card.device_id, 'data-testid': `deploy.run.card.${card.device_id}`,
+                style: { display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', padding: '3px 8px', borderRadius: '8px',
+                  border: card.idle ? '1px solid rgba(5,150,105,.45)' : '1px dashed rgba(107,122,140,.5)', color: card.idle ? '#059669' : c.textTertiary,
+                  opacity: card.idle ? 1 : 0.75, cursor: card.idle ? 'pointer' : 'not-allowed' } },
+                h('input', { type: 'checkbox', checked: runCards.includes(card.device_id), disabled: !card.idle,
+                  onChange: (event) => {
+                    setLastBulk(null)
+                    if (event?.target?.checked) setRunCards([...runCards, card.device_id])
+                    else setRunCards(runCards.filter((id) => id !== card.device_id))
+                  } }),
+                `${t('deploy.run.chip')} ${card.device_id} · `,
+                card.unknown ? t('deploy.run.cardUnknown') : `HBM ${Math.round(card.hbmMax ?? 0)}% · AI ${Math.round(card.aiMax ?? 0)}%`,
+              )),
+          ),
+        ) : null,
+        envs.length > 0 ? h('details', { 'data-testid': 'deploy.run.advanced', style: { marginBottom: '8px' } },
+          h('summary', { style: { ...s.muted, fontSize: '11px', cursor: 'pointer' } }, t('deploy.run.advanced')),
+          h('div', { style: { ...s.muted, fontSize: '11px', marginTop: '8px', fontWeight: 600 } }, t('deploy.run.vllmParams')),
+          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '8px', marginTop: '6px' } },
+            runField(t('deploy.run.maxNumSeqs'), runMaxSeqs, (event) => setRunMaxSeqs(event?.target?.value ?? ''), 'deploy.run.maxNumSeqs', { props: { inputMode: 'numeric' } }),
+            runField(t('deploy.run.maxNumBatched'), runMaxBatched, (event) => setRunMaxBatched(event?.target?.value ?? ''), 'deploy.run.maxNumBatched', { props: { inputMode: 'numeric' } }),
+            runField(t('deploy.run.gpuMemory'), runGpuMem, (event) => setRunGpuMem(event?.target?.value ?? ''), 'deploy.run.gpuMemory', { props: { inputMode: 'decimal' } }),
+            runField(t('deploy.run.healthTimeout'), runHealth, (event) => setRunHealth(event?.target?.value ?? ''), 'deploy.run.healthTimeout', { props: { inputMode: 'numeric' } }),
+          ),
+          h('div', { style: { display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px' } },
+            h('label', { style: { ...s.field, fontSize: '11px', flexDirection: 'row', alignItems: 'center', gap: '6px' } },
+              h('input', { type: 'checkbox', checked: runPrefix, onChange: (event) => setRunPrefix(Boolean(event?.target?.checked)), 'data-testid': 'deploy.run.prefixCache' }),
+              t('deploy.run.prefixCache')),
+            h('label', { style: { ...s.field, fontSize: '11px', flexDirection: 'row', alignItems: 'center', gap: '6px' } },
+              h('input', { type: 'checkbox', checked: runEager, onChange: (event) => setRunEager(Boolean(event?.target?.checked)), 'data-testid': 'deploy.run.enforceEager' }),
+              t('deploy.run.enforceEager')),
+            h('span', { style: { ...s.muted, fontSize: '11px' } }, `${t('deploy.run.tp')} = ${runCards.length} chip`),
+          ),
+          h('div', { style: { ...s.muted, fontSize: '11px', marginTop: '4px' } }, t('deploy.run.tokenHint')),
+          h('div', { style: { ...s.muted, fontSize: '11px', marginTop: '10px', fontWeight: 600 } }, t('deploy.run.codeBranches')),
+          h('div', { style: { ...s.muted, fontSize: '11px', marginTop: '2px' } }, t('deploy.run.codeBranchesHint')),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', marginTop: '8px', color: c.text } },
+            h('input', { type: 'checkbox', checked: runBuild, onChange: (event) => { const on = Boolean(event?.target?.checked); setRunBuild(on); if (on && Number(runHealth) < 1800) setRunHealth('3600') }, 'data-testid': 'deploy.run.build' }),
+            t('deploy.run.build')),
+          runBuild ? h('div', { style: { ...s.muted, fontSize: '10.5px', marginTop: '2px' } }, t('deploy.run.buildHint')) : null,
+          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '8px', marginTop: '6px' } },
+            ['vllm', 'vllm-ascend', 'lmcache', 'lmcache-ascend', 'mooncake'].flatMap((component) => [
+              runField(`${component} · ${t('deploy.run.branchLabel')}`, runBranches[component], (event) => setRunBranches((prev) => ({ ...prev, [component]: event?.target?.value ?? '' })), `deploy.run.branch.${component}`, { props: { placeholder: t('deploy.run.branchPlaceholder') } }),
+              ...(runBuild ? [runField(`${component} · ${t('deploy.run.repoLabel')}`, runRepos[component], (event) => setRunRepos((prev) => ({ ...prev, [component]: event?.target?.value ?? '' })), `deploy.run.repo.${component}`, { props: { placeholder: t('deploy.run.repoPlaceholder') } })] : []),
+            ]),
+          ),
+        ) : null,
+        envs.length > 0 ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' } },
+          (previewBlocked || startBlocked) ? h('div', { 'data-testid': 'deploy.run.blockedHint', style: { ...s.muted, fontSize: '10.5px' } },
+            previewBlocked ? `⚠ ${previewBlocked}` : `ℹ ${startBlocked}`) : null,
+          h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' } },
+            h('button', { type: 'button', 'data-testid': 'deploy.run.preview', title: previewBlocked ?? '', disabled: runBusy || Boolean(previewBlocked), onClick: () => doPreview(), style: { ...s.button, fontSize: '11px', padding: '4px 10px', ...(runBusy || previewBlocked ? { opacity: 0.55, cursor: 'not-allowed' } : {}) } }, runBusy ? '…' : t('deploy.run.preview')),
+            h('button', { type: 'button', 'data-testid': 'deploy.run.start', title: startBlocked ?? '', disabled: runBusy || Boolean(startBlocked), onClick: () => doStart(), style: { ...s.buttonPrimary, fontSize: '11px', padding: '4px 10px', ...(runBusy || startBlocked ? { opacity: 0.45, cursor: 'not-allowed' } : {}) } }, t('deploy.run.start')),
+          ),
+        ) : null,
+        previewData ? h('div', { 'data-testid': 'deploy.run.previewCard', style: { ...s.card, padding: '8px 10px', marginBottom: '8px' } },
+          h('div', { style: { fontSize: '12px', fontWeight: 600, color: c.text, marginBottom: '4px' } }, t('deploy.run.previewTitle')),
+          h('div', { style: { ...s.muted, fontSize: '11px', marginBottom: '4px' } },
+            `${previewData.container_name} · ${previewData.env?.host_alias ?? ''} · ${t('deploy.run.cards')}: ${(previewData.cards ?? []).map((c2) => c2.device ?? c2.card).join(',')}`),
+          h('pre', { 'data-testid': 'deploy.run.preview.command', style: { ...s.code, fontSize: '10.5px', whiteSpace: 'pre-wrap', margin: '0 0 4px' } }, (previewData.argv ?? []).join(' ')),
+          h('div', { style: { ...s.muted, fontSize: '11px' } }, `${t('deploy.run.token')}: ${String(previewData.confirmation_token ?? '').slice(0, 12)}… · ${t('deploy.run.expiry', { time: timeText(previewData.confirmation_expires_at) })}`),
+          previewWarnings.length > 0 ? h('div', { style: { marginTop: '6px', fontSize: '11px', color: '#b45309' } }, previewWarnings.map((w, i) => h('div', { key: `pw-${i}` }, `⚠ ${w}`))) : null,
+        ) : null,
+        h('div', { 'data-testid': 'deploy.run.instances', style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+            h('span', { style: { fontSize: '12px', fontWeight: 600, color: c.text } }, t('deploy.run.instances')),
+            h('button', { type: 'button', onClick: () => loadInstances(), style: { ...s.buttonGhost, fontSize: '11px', padding: '3px 10px' } }, t('deploy.state.refresh')),
+          ),
+          instancesError ? h(StateMsg, { title: instancesError.code, desc: instancesError.message, tone: 'error' }) : null,
+          instances !== null && instances.length === 0 ? h('div', { style: s.muted }, t('deploy.run.noInstances')) : null,
+          (instances ?? []).map((instance) =>
+            h('div', { key: instance.service_id, 'data-testid': `deploy.run.instance.${instance.service_id}`, style: { ...s.card, flexDirection: 'row', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px' } },
+              h('div', { style: { flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', gap: '2px' } },
+                h('span', { style: { fontSize: '12px', color: c.text, fontWeight: 600 } }, instance.container_name),
+                h('span', { style: { ...s.muted, fontSize: '11px' } },
+                  `${envDisplayName({ name: instance.host_alias, host_alias: instance.host_alias }, null)} · ${t('deploy.run.cards')}: ${(instance.cards ?? []).join(',')} · :${instance.port ?? '--'} · ${instance.started_at ? timeText(instance.started_at) : '--'}${instance.health ? ` · ${instance.health}` : ''}`),
+              ),
+              h('button', { type: 'button', 'data-testid': `deploy.run.instance.${instance.service_id}.state`, onClick: () => doState(instance), style: { ...s.buttonGhost, fontSize: '11px', padding: '3px 10px' } }, t('deploy.run.state')),
+              h('button', { type: 'button', 'data-testid': `deploy.run.instance.${instance.service_id}.logs`, onClick: () => doLogs(instance), style: { ...s.buttonGhost, fontSize: '11px', padding: '3px 10px' } }, t('deploy.run.logs')),
+              h('button', { type: 'button', 'data-testid': `deploy.run.instance.${instance.service_id}.stop`, onClick: () => doStop(instance), style: { ...s.buttonGhost, fontSize: '11px', padding: '3px 10px' } }, t('deploy.run.stop')),
+            )),
+        ),
+        logView ? h('div', { 'data-testid': 'deploy.run.logview', style: { ...s.card, padding: '8px 10px' } },
+          h('div', { style: { fontSize: '11px', color: c.textSecondary, marginBottom: '4px' } }, logView.container),
+          h('pre', { style: { ...s.code, fontSize: '10.5px', whiteSpace: 'pre-wrap', margin: 0 } }, logView.log || t('deploy.run.logEmpty')),
+        ) : null,
+      )
+    }
+
     function DeploySegment({ state, t }) {
       const envs = (state?.envs ?? []).filter((env) => env && env.enabled !== false)
       // t36：环境编号按 envs 配置列表顺序（与「环境信息」段一致；排序/过滤展示不影响编号）
@@ -2584,101 +3029,8 @@ window.__ModuleLoader__.load({
         { 'data-testid': 'deploy.segment', style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
         notice ? h(StateMsg, { title: notice.text, tone: notice.tone === 'ok' ? 'muted' : 'warn' }) : null,
         h('div', { style: { ...s.muted, fontSize: '12px' } }, t('deploy.readonly')),
-        // ①-④ 向导
-        h(Section, { title: t('deploy.wiz.title') },
-          h('div', { style: { ...s.muted, fontSize: '11px', marginBottom: '6px' } }, t('deploy.envsHint')),
-          envs.length === 0
-            ? h(StateMsg, { title: t('deploy.envNone'), tone: 'warn' })
-            : h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' } },
-                envs.map((env) => {
-                  const tier = envTier(env)
-                  const tierText = t(`envs.tier.${tier}`)
-                  const hot = tier === 'partial' || tier === 'busy'
-                  return h(
-                    'label',
-                    {
-                      key: env.id,
-                      'data-testid': `deploy.wiz.env.${env.id}`,
-                      style: { display: 'flex', alignItems: 'flex-start', gap: '6px', padding: '4px 8px', border: `1px solid ${fields.envId === env.id ? c.brand : c.borderSoft}`, borderRadius: '8px', cursor: 'pointer', background: fields.envId === env.id ? c.layer2 : 'transparent' },
-                    },
-                    h('input', { type: 'radio', name: 'deploy-wiz-env', checked: fields.envId === env.id, onChange: onField('envId'), value: env.id, style: { marginTop: '2px' } }),
-                    h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px' } },
-                      h('span', { style: { fontSize: '12px', color: c.text } }, envDisplayName(env, envOrder.has(env.id) ? t('envs.fallbackName', { n: envOrder.get(env.id) }) : null)),
-                      h('span', { style: { ...s.muted, fontSize: '11px' } }, `${t('envs.f.mode')}：${env.mode === 'ssh' ? t('envs.modeSsh') : t('envs.modeLocal')} · ${tierText}`),
-                      hot ? h('span', { style: { fontSize: '11px', color: c.warn } }, t('deploy.envBusy', { tier: tierText })) : null,
-                    ),
-                  )
-                }),
-              ),
-          h('div', { style: { ...s.sectionTitle, fontSize: '12px' } }, t('deploy.wiz.baseline')),
-          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '6px', marginBottom: '8px' } },
-            // t44 B：代码组件下拉（基线/候选同一组件；切换组件不重置已填 ref）
-            h('label', { style: { ...s.field, fontSize: '12px' } },
-              h('span', { style: { color: c.textSecondary } }, t('deploy.wiz.component')),
-              h('select', { 'data-testid': 'deploy.wiz.component', value: fields.component ?? DEFAULT_DEPLOY_COMPONENT, onChange: onField('component'), 'aria-label': t('deploy.wiz.component'), style: { ...s.select, fontSize: '12px' } },
-                DEPLOY_COMPONENTS.map((comp) => h('option', { key: comp, value: comp }, comp)),
-              ),
-            ),
-            ...DEPLOY_WIZ_TEXT_FIELDS.filter((field) => field.key.startsWith('base')).map((field) => wizField(field.key, field.label, field.testid, field.placeholder)),
-          ),
-          h('div', { style: { ...s.sectionTitle, fontSize: '12px' } }, t('deploy.wiz.candidate')),
-          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '6px', marginBottom: '8px' } },
-            ...DEPLOY_WIZ_TEXT_FIELDS.filter((field) => field.key.startsWith('cand')).map((field) => wizField(field.key, field.label, field.testid, field.placeholder)),
-          ),
-          h('div', { style: s.sectionTitle, fontSize: '12px' }, t('deploy.wiz.model')),
-          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '6px', marginBottom: '8px' } },
-            wizField('modelPath', 'deploy.wiz.modelPath', 'deploy.wiz.modelPath', '/data/models/Qwen3-8B'),
-            wizField('modelName', 'deploy.wiz.modelName', 'deploy.wiz.modelName', ''),
-            ...DEPLOY_WIZ_PARAM_FIELDS.map((field) => wizField(field.key, field.label, field.testid)),
-          ),
-          specErrors.length > 0 ? h('div', { style: s.notice }, specErrors.map((key) => h('div', { key }, `· ${t(key)}`))) : null,
-          draftError ? h(StateMsg, { title: draftError.code ?? 'GENERATE_FAILED', desc: draftError.message, tone: 'error' }) : null,
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
-            regenArmed ? h('span', { style: { fontSize: '11px', color: c.warn } }, t('deploy.wiz.regenHint')) : null,
-            h('button', { type: 'button', 'data-testid': 'deploy.wiz.generate', disabled: busy || envs.length === 0, onClick: onGenerate, style: { ...s.buttonPrimary, fontSize: '12px' } }, busy ? t('deploy.wiz.generating') : t('deploy.wiz.generate')),
-          ),
-        ),
-        // 编辑器（草稿或已打开的保存计划）
-        draft
-          ? h(DeployPlanEditor, {
-              draft,
-              editingId,
-              busy,
-              saveError,
-              onChangeStep,
-              onMoveStep,
-              onDeleteStep,
-              onAddStep,
-              onSave,
-              onClose: () => { setDraft(null); setEditingId(null); setSaveError(null); setRegenArmed(false) },
-              t,
-            })
-          : null,
-        // 已保存计划
-        h(Section, { title: t('deploy.plans.title'), extra: h('button', { type: 'button', onClick: () => loadPlans(), style: { ...s.buttonGhost, fontSize: '11px', padding: '3px 10px' } }, t('deploy.state.refresh')) },
-          plansLoading ? h('div', { 'data-testid': 'deploy.plans.loading', style: s.skeleton }, '…') : null,
-          plansError ? h(StateMsg, { title: plansError.code ?? 'LOAD_FAILED', desc: plansError.message, tone: 'error' }) : null,
-          !plansLoading && !plansError && (plansData?.plans ?? []).length === 0
-            ? h('div', { style: s.muted }, t('deploy.plans.empty'))
-            : null,
-          (plansData?.plans ?? []).map((plan) =>
-            h(
-              'div',
-              {
-                key: plan.id,
-                'data-testid': `deploy.plan.${plan.id}`,
-                style: { ...s.card, flexDirection: 'row', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px' },
-              },
-              h('div', { style: { flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', gap: '2px' } },
-                h('span', { style: { fontSize: '12px', color: c.text, fontWeight: 600 } }, plan.title ?? plan.id),
-                h('span', { style: { ...s.muted, fontSize: '11px' } },
-                  `${plan.env ? envDisplayName(plan.env, null) : ''} · ${t('deploy.plans.steps', { n: plan.step_count ?? (plan.steps ?? []).length })} · ${t('deploy.plans.updated', { time: timeText(plan.updated_at) })}`),
-              ),
-              h('button', { type: 'button', 'data-testid': `deploy.plan.${plan.id}.open`, onClick: () => openPlan(plan.id), style: { ...s.buttonGhost, fontSize: '11px', padding: '3px 10px' } }, t('deploy.plans.open')),
-              h('button', { type: 'button', 'data-testid': `deploy.plan.${plan.id}.del`, onClick: () => deletePlan(plan.id), style: { ...s.buttonGhost, fontSize: '11px', padding: '3px 10px', color: delArmed === plan.id ? c.error : c.textSecondary } }, delArmed === plan.id ? t('deploy.plans.delHint') : t('deploy.plans.del')),
-            ),
-          ),
-        ),
+        // t130：容器服务是主入口；旧版“按代码分支生成计划”收进默认收起的高级区
+        h(ContainerServicesBlock, { state, t }),
         h('div', { style: s.footer }, t('deploy.footer')),
       )
     }
@@ -2962,7 +3314,7 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight'],
       // 仅供测试使用：无头渲染占用视图组件与判定函数（不参与 DSH 运行时）
-      __test: { chipOccState, deriveEnvOccupancy, envDisplayName, envHostTag, stripUserPrefix, cardNumbering, EnvsSection, EnvBlock, ConfigBar, OccupancyPill, ChipStrip, OccProcRow, EnvMetricSummary, EnvInlineSummary, CardBlock, ChipRow, ImportGuide, AscendIcon, TabTitle, Panel, TuneJobs, SegmentedControl, DeploySegment, DeployStepRow, DeployPlanEditor, validateDeploySpec, buildSpecPayload, deployDefaultFields, DEPLOY_COMPONENTS, DEFAULT_DEPLOY_COMPONENT, EnvConfigModal, EnvConfigRow, validateEnvForm, zh, en },
+      __test: { chipOccState, deriveEnvOccupancy, envDisplayName, envHostTag, stripUserPrefix, cardNumbering, EnvsSection, EnvBlock, ConfigBar, OccupancyPill, ChipStrip, OccProcRow, EnvMetricSummary, EnvInlineSummary, CardBlock, ChipRow, ImportGuide, AscendIcon, TabTitle, Panel, TuneJobs, SegmentedControl, DeploySegment, DeployStepRow, DeployPlanEditor, validateDeploySpec, buildSpecPayload, deployDefaultFields, DEPLOY_COMPONENTS, DEFAULT_DEPLOY_COMPONENT, EnvConfigModal, EnvConfigRow, validateEnvForm, ContainerServicesBlock, runCardStates, envRunDefaults, DEPLOY_RUN_DEFAULT_IMAGE, DEPLOY_RUN_BIG_IMAGE, zh, en },
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ascend-perf: dictionaries')
         ctx.inject(['sidebarRightTabs', 'sidebarRight'], (native) => {
